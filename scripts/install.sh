@@ -4,7 +4,8 @@ set -e
 PKG_NAME="wk2xxx"
 PKG_VER="1.0.0"
 SRC_DIR="/usr/src/${PKG_NAME}-${PKG_VER}"
-REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 KERNELVER="$(uname -r)"
 
 apt update
