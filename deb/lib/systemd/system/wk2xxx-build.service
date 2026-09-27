@@ -11,6 +11,7 @@ ExecStart=/usr/src/wk2xxx-1.0.0/scripts/prepare-headers.sh
 ExecStart=/usr/sbin/dkms build -m wk2xxx -v 1.0.0
 ExecStart=/usr/sbin/dkms install -m wk2xxx -v 1.0.0 --force
 ExecStart=/sbin/depmod -a
+ExecStart=/sbin/modprobe wk2xxx
 
 [Install]
 WantedBy=sysinit.target
