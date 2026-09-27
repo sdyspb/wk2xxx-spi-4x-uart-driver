@@ -1,0 +1,12 @@
+#!/bin/bash
+set -e
+
+if [ -d /run/systemd/system ]; then
+    systemctl disable wk2xxx-build.service || true
+fi
+
+if command -v dkms >/dev/null 2>&1; then
+    dkms remove -m wk2xxx -v 1.0.0 --all || true
+fi
+
+exit 0
