@@ -120,13 +120,3 @@ Exit with `Ctrl+A`, then `X`.
 | No data on TX | Reset line not released | Check `reset-gpio` state |
 | `vermagic` mismatch | Headers ≠ running kernel | Use DKMS (this package) |
 
-## What is missing in the repository
-
-- **`wk2xxx.c`** – the actual driver source. Without it DKMS cannot build.
-- **`scripts/test-minicom.sh`** – helper script for interactive testing (optional but recommended).
-- **CI workflow** – e.g. GitHub Actions to verify compilation on a clean Armbian rootfs.
-- **More detailed `docs/pinout.md`** – fill in the real pin mapping for your board.
-
-## License
-
-GPL-2.0+
