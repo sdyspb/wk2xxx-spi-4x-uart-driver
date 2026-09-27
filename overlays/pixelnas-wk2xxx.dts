@@ -1,0 +1,44 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+    fragment@0 {
+        target = <&spi1>;
+        __overlay__ {
+            #address-cells = <1>;
+            #size-cells = <0>;
+            status = "okay";
+            max-freq = <48000000>;
+            pinctrl-names = "default", "high_speed";
+            pinctrl-0 = <&spi1m1_pins &spi1m1_cs0>;
+            pinctrl-1 = <&spi1m1_pins_hs &spi1m1_cs0>;
+
+            spi_wk2xxx: spi_wk2xxx@0 {
+                compatible = "wkmic,wk2124";
+                reg = <0>;
+                spi-max-frequency = <10000000>;
+
+                clocks = <&wk2124_clk>;
+                clock-names = "ref";
+
+                interrupt-parent = <&gpio0>;
+                interrupts = <6 2>;
+
+                reset-gpio = <&pca9555 9 1>;
+                irq-gpio = <&gpio0 6 2>;
+            };
+        };
+    };
+
+    fragment@1 {
+        target-path = "/";
+        __overlay__ {
+            wk2124_clk: wk2124-clock {
+                compatible = "fixed-clock";
+                #clock-cells = <0>;
+                clock-frequency = <11059200>;
+                clock-output-names = "wk2124-ref";
+            };
+        };
+    };
+};
