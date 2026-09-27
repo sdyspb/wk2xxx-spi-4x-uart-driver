@@ -2,29 +2,29 @@
 set -e
 
 KERNELVER="${1:-$(uname -r)}"
-BASE="/usr/src/wk2xxx-headers"
-DEST="${BASE}/${KERNELVER}"
+BUILD_LINK="/lib/modules/${KERNELVER}/build"
+SOURCE_LINK="/lib/modules/${KERNELVER}/source"
 
 # Already prepared
-if [ -d "${DEST}" ] && [ -e "${DEST}/Makefile" ]; then
-    echo "[prepare-headers] Already prepared: ${DEST}"
+if [ -e "${BUILD_LINK}/Makefile" ]; then
+    echo "[prepare-headers] Already prepared: ${BUILD_LINK}"
     exit 0
 fi
-
-mkdir -p "${BASE}"
 
 # 1. Native headers for this exact kernel version
 NATIVE="/usr/src/linux-headers-${KERNELVER}"
 if [ -d "${NATIVE}" ]; then
-    ln -sfn "${NATIVE}" "${DEST}"
-    echo "[prepare-headers] Linked native headers: ${NATIVE} -> ${DEST}"
+    ln -sfn "${NATIVE}" "${BUILD_LINK}"
+    ln -sfn "${NATIVE}" "${SOURCE_LINK}"
+    echo "[prepare-headers] Linked native headers: ${NATIVE}"
     exit 0
 fi
 
 # 2. Fallback: any headers available in /usr/src
 for d in /usr/src/linux-headers-*/; do
     [ -d "$d" ] || continue
-    ln -sfn "${d%/}" "${DEST}"
+    ln -sfn "${d%/}" "${BUILD_LINK}"
+    ln -sfn "${d%/}" "${SOURCE_LINK}"
     echo "[prepare-headers] WARNING: ${KERNELVER} headers not found."
     echo "[prepare-headers] Falling back to: ${d%/}"
     echo "[prepare-headers] Build may fail if kernel API differs."
@@ -32,5 +32,4 @@ for d in /usr/src/linux-headers-*/; do
 done
 
 echo "[prepare-headers] ERROR: no kernel headers found in /usr/src/"
-echo "[prepare-headers] Install linux-headers or provide kernel source."
 exit 1
