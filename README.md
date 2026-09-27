@@ -24,6 +24,7 @@ Linux kernel driver for the **WK2124** (and compatible WK2132 / WK2168 / WK2202 
 ## Installation
 
 ```bash
+sudo apt update && sudo apt upgrade -y && sudo apt install -y git
 git clone https://github.com/sdyspb/wk2xxx-spi-4x-uart-driver.git
 cd wk2xxx-spi-4x-uart-driver
 sudo ./install.sh
