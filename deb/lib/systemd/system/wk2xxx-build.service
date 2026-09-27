@@ -1,0 +1,16 @@
+[Unit]
+Description=Build wk2xxx DKMS module on first boot
+DefaultDependencies=no
+After=local-fs.target
+Before=sysinit.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/src/wk2xxx-1.0.0/scripts/prepare-headers.sh
+ExecStart=/usr/sbin/dkms build -m wk2xxx -v 1.0.0
+ExecStart=/usr/sbin/dkms install -m wk2xxx -v 1.0.0 --force
+ExecStart=/sbin/depmod -a
+
+[Install]
+WantedBy=sysinit.target
