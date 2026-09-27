@@ -16,33 +16,50 @@ Linux kernel driver for **WK2124** (and compatible WK2132 / WK2168 / WK2202 / WK
 
 - Armbian on RK3568 (tested on Firefly AIO-3568J)
 - Kernel 6.18+
-- Device Tree overlays for WK2124 already installed and enabled on the system
-- `pca9555` GPIO expander available (used for the reset line)
+- Device Tree overlay `pixelnas-wk2xxx` applied
 
 ## Installation
 
-### Option 1: Install from .deb package (recommended)
+### Pre-check: overlay
+
+Verify the `pixelnas-wk2xxx` overlay is applied:
 
 ```bash
-git clone https://github.com/sdyspb/wk2xxx-spi-4x-uart-driver.git
-cd wk2xxx-spi-4x-uart-driver
-./build-deb.sh
+cat /proc/device-tree/spi@fe620000/spi_wk2xxx@0/compatible
+```
+
+Expected: `wkmic,wk2124`.
+
+If the file is missing, apply the overlay:
+
+```bash
+sudo cp pixelnas-wk2xxx.dts /boot/overlay-user/
+sudo armbian-add-overlay /boot/overlay-user/pixelnas-wk2xxx.dts
+sudo reboot
+```
+
+### Install the driver
+
+Download the latest `.deb` from the [Releases page](https://github.com/sdyspb/wk2xxx-spi-4x-uart-driver/releases) and install:
+
+```bash
 sudo apt install ./wk2xxx-dkms_1.0.0_all.deb
 sudo reboot
 ```
 
-The package registers the module with DKMS and enables a systemd service (`wk2xxx-build.service`) that compiles and loads the module on first boot. No manual steps required.
+During `apt install`, the package:
 
-### Option 2: Install via install.sh
+1. Pulls in `dkms`, `build-essential`, and `linux-headers-current-rockchip64`.
+2. Registers the module with DKMS.
+3. Enables `wk2xxx-build.service`.
 
-```bash
-git clone https://github.com/sdyspb/wk2xxx-spi-4x-uart-driver.git
-cd wk2xxx-spi-4x-uart-driver
-sudo ./scripts/install.sh
-sudo reboot
-```
+On first boot, `wk2xxx-build.service`:
 
-This is equivalent to the .deb path but without the package manager integration. Use it if you want to install on a running system without building the .deb first.
+1. Prepares kernel headers.
+2. Builds the module via DKMS.
+3. Patches `vermagic` if headers differ.
+4. Installs the `.ko`, runs `depmod`.
+5. Loads the module (`modprobe wk2xxx`).
 
 ## Verification
 
@@ -84,43 +101,52 @@ Expected: `41 42 43` (hex for `ABC`).
 ### Minicom
 
 ```bash
+sudo apt install -y minicom
 sudo minicom -D /dev/ttyWK0 -b 115200
 ```
 
 Exit with `Ctrl+A`, then `X`.
 
-## Integration into custom Armbian build
+### Simple send
 
-1. Build the .deb on any Debian/Ubuntu machine (or on the target SBC):
+```bash
+sudo stty -F /dev/ttyWK0 115200 raw -echo
+sudo timeout 3 sh -c "printf 'A' > /dev/ttyWK0"
+```
 
-   ```bash
-   ./build-deb.sh
-   ```
+## Integration into a custom Armbian build
 
-2. Copy the resulting `.deb` to `userpatches/overlay/` on the Armbian Build host:
-
+1. Download the `.deb` from the [Releases page](https://github.com/sdyspb/wk2xxx-spi-4x-uart-driver/releases).
+2. Copy it to `userpatches/overlay/` on the Armbian Build host:
    ```
    userpatches/overlay/wk2xxx-dkms_1.0.0_all.deb
    ```
-
 3. In `userpatches/customize-image.sh`, add:
 
    ```bash
    InstallWk2xxxDriver() {
-       apt-get install -y /tmp/overlay/wk2xxx-dkms_1.0.0_all.deb
+       apt-get update -qq
+       apt-get install -y -qq "/tmp/overlay/wk2xxx-dkms_1.0.0_all.deb"
    }
    ```
 
    and call `InstallWk2xxxDriver` from `Main()`.
 
-4. Build the image. After first boot, the module will compile automatically via `wk2xxx-build.service`.
+4. Build the image with `INSTALL_HEADERS=yes`:
+
+   ```bash
+   ./compile.sh build BOARD=pixelnas BRANCH=current BUILD_DESKTOP=no \
+       BUILD_MINIMAL=no KERNEL_CONFIGURE=no RELEASE=trixie INSTALL_HEADERS=yes
+   ```
+
+After first boot, the driver compiles automatically.
 
 ## How it works
 
-- `wk2xxx.c` — driver source with compatibility defines (`PORT_WK2XXX`, `UPIO_BUS`, `SERIAL_IO_BUS`) so it compiles against older kernel headers.
-- `scripts/prepare-headers.sh` — symlinks the best available headers to `/lib/modules/$(uname -r)/build` so DKMS can find them.
-- `scripts/post-build.sh` — patches the `vermagic` string in the compiled `.ko` to match the target kernel version if headers differ.
-- `wk2xxx-build.service` — oneshot systemd unit, runs on first boot: prepares headers, builds, installs, runs `depmod`, then loads the module.
+- `wk2xxx.c` — driver source with compatibility defines (`PORT_WK2XXX`, `UPIO_BUS`, `SERIAL_IO_BUS`).
+- `scripts/prepare-headers.sh` — symlinks the best available headers to `/lib/modules/$(uname -r)/build`.
+- `scripts/post-build.sh` — patches the `vermagic` string in the compiled `.ko` if headers differ from the target kernel.
+- `wk2xxx-build.service` — oneshot systemd unit, runs on first boot to build, install, and load the module.
 
 ## Uninstall
 
@@ -129,18 +155,17 @@ sudo apt remove --purge wk2xxx-dkms
 sudo reboot
 ```
 
-This removes the DKMS entry, systemd service, module binary, and autoload config.
-
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| No `/dev/ttyWK*` | Module not loaded | `sudo modprobe wk2xxx`, check `dmesg` |
-| `wk2xxx-build.service` failed | Kernel headers unavailable | `apt install linux-headers-current-rockchip64` |
-| `dkms build` fails | Missing build tools | `apt install build-essential` |
-| `probe failed` on load | Overlay missing or `pca9555` not up | Apply overlays first, verify with `dmesg` |
-| CS line stays in Z-state | `spi1m1_cs0` missing from `pinctrl-0` | Fix the overlay |
-| No data on TX | Reset line not released | Check `reset-gpio` via `debugfs` |
+| No `/dev/ttyWK*` and `lsmod` empty | Module not loaded | `sudo modprobe wk2xxx`, check `dmesg` |
+| No `/dev/ttyWK*`, module loaded, `spi1.0` missing in `/sys/bus/spi/devices/` | `pixelnas-wk2xxx` overlay not applied | Apply the overlay (see Installation) |
+| No `/dev/ttyWK*`, module loaded, `spi1.0` present | `pca9555` not up or `reset-gpio` unavailable | `dmesg \| grep -iE "pca9555\|wk2xxx"` |
+| `wk2xxx-build.service` failed | Kernel headers unavailable | `sudo apt install linux-headers-current-rockchip64` |
+| `dkms build` fails | Missing build tools | `sudo apt install build-essential` |
+| CS line stays in Z-state | `spi1m1_cs0` missing from `pinctrl-0` | Fix the `pixelnas-wk2xxx` overlay |
+| No data on TX | Reset line not released | Check `reset-gpio` state via `/sys/kernel/debug/gpio` |
 | `vermagic` mismatched | DKMS skipped `post-build` | Check `/var/lib/dkms/wk2xxx/1.0.0/<kernel>/<arch>/log/make.log` |
 
 Logs:
