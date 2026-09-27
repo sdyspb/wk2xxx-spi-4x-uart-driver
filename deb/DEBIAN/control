@@ -1,0 +1,10 @@
+Package: wk2xxx-dkms
+Version: 1.0.0
+Architecture: all
+Maintainer: sdyspb
+Depends: dkms (>= 2.1), make, gcc, build-essential
+Section: kernel
+Priority: optional
+Description: WK2124 SPI to 4x UART driver (DKMS)
+ Kernel driver for WK2124 / WK2132 / WK2168 / WK2202 / WK2204.
+ Exposes four UART channels as /dev/ttyWK0..3.
