@@ -45,6 +45,19 @@
 #include <linux/units.h>
 #include <linux/workqueue.h>
 
+/* Compatibility with older kernel headers (pre-6.18.5x) */
+#ifndef PORT_WK2XXX
+#define PORT_WK2XXX 124
+#endif
+
+#ifndef UPIO_BUS
+#define UPIO_BUS 8
+#endif
+
+#ifndef SERIAL_IO_BUS
+#define SERIAL_IO_BUS 8
+#endif
+
 #define WK2XXX_NAME		"wk2xxx"
 #define WK2XXX_MAX_DEVS		8	/* Total number of lines. */
 #define WK2XXX_MAX_PORTS	4	/* Max number of ports per IC. */
