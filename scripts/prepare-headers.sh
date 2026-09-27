@@ -1,13 +1,4 @@
 #!/bin/bash
-# Prepare kernel headers for DKMS build on custom Armbian kernels.
-#
-# DKMS requires the directory specified in kernel_source_dir to exist
-# before the build starts. This script creates a symlink at that path
-# pointing to the best available headers.
-#
-# Usage: prepare-headers.sh [kernelver]
-#   kernelver - defaults to `uname -r`
-
 set -e
 
 KERNELVER="${1:-$(uname -r)}"
@@ -38,7 +29,7 @@ for d in /usr/src/linux-headers-*/; do
     echo "[prepare-headers] Falling back to: ${d%/}"
     echo "[prepare-headers] Build may fail if kernel API differs."
     exit 0
-fi
+done
 
 echo "[prepare-headers] ERROR: no kernel headers found in /usr/src/"
 echo "[prepare-headers] Install linux-headers or provide kernel source."
