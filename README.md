@@ -1,6 +1,6 @@
 # WK2xxx SPI to 4x UART Driver (DKMS)
 
-Linux kernel driver for **WK2124** (and compatible WK2132 / WK2168 / WK2202 / WK2204) SPI-to-UART bridge ICs from WKmic. Exposes four independent UART channels as `/dev/ttyWK0..3` and rebuilds automatically after kernel updates via DKMS.
+Linux kernel driver for **WK2124** (and compatible WK2132 / WK2168 / WK2202 / WK2204) SPI-to-UART bridge ICs from WKmic. Exposes four independent UART channels as `/dev/ttyWK0..3`. Packaged as a DKMS module so it rebuilds automatically after kernel updates.
 
 ## Features
 
@@ -10,7 +10,7 @@ Linux kernel driver for **WK2124** (and compatible WK2132 / WK2168 / WK2202 / WK
 - RS-485 support (WK2124, WK2168, WK2204)
 - Interrupt-driven operation
 - DKMS: automatic rebuild on kernel upgrade
-- Works even when kernel headers do not match the running kernel exactly (fallback + vermagic patch)
+- Works with custom Armbian builds where kernel headers may not match the running kernel exactly
 
 ## Requirements
 
@@ -19,58 +19,37 @@ Linux kernel driver for **WK2124** (and compatible WK2132 / WK2168 / WK2202 / WK
 - Device Tree overlays for WK2124 already installed and enabled on the system
 - `pca9555` GPIO expander available (used for the reset line)
 
-> ⚠️ Warning: This package installs **only the DKMS driver**. Device Tree overlays (`pixelnas-i2c`, `pixelnas-exp`, `pixelnas-wk2xxx`) must already be present and enabled on the system before installation.
-
 ## Installation
 
-### 1. Install git (if not present)
-
-```bash
-sudo apt update
-sudo apt install -y git
-```
-
-### 2. Clone the repository
+### Option 1: Install from .deb package (recommended)
 
 ```bash
 git clone https://github.com/sdyspb/wk2xxx-spi-4x-uart-driver.git
 cd wk2xxx-spi-4x-uart-driver
+./build-deb.sh
+sudo apt install ./wk2xxx-dkms_1.0.0_all.deb
+sudo reboot
 ```
 
-### 3. Run the installer
+The package registers the module with DKMS and enables a systemd service (`wk2xxx-build.service`) that compiles and loads the module on first boot. No manual steps required.
+
+### Option 2: Install via install.sh
 
 ```bash
+git clone https://github.com/sdyspb/wk2xxx-spi-4x-uart-driver.git
+cd wk2xxx-spi-4x-uart-driver
 sudo ./scripts/install.sh
 sudo reboot
 ```
 
-### Updating an existing installation
-
-```bash
-cd ~/wk2xxx-spi-4x-uart-driver
-git pull
-sudo dkms remove -m wk2xxx -v 1.0.0 --all
-sudo rm -rf /usr/src/wk2xxx-1.0.0
-sudo ./scripts/install.sh
-sudo reboot
-```
-
-The installer:
-
-1. Installs `build-essential` and `dkms`.
-2. Ensures kernel headers are present. If the exact package for the running kernel is missing, it falls back to `linux-headers-current-rockchip64` (or another suitable package).
-3. Prepares a headers symlink at `/lib/modules/$(uname -r)/build` (`scripts/prepare-headers.sh`).
-4. Registers, builds, and installs the module via DKMS.
-5. Patches `vermagic` in the built `.ko` if headers and kernel versions differ (`scripts/post-build.sh`).
-6. Enables autoload via `/etc/modules-load.d/wk2xxx.conf`.
-
-No manual editing of kernel config, headers, or `vermagic` is required.
+This is equivalent to the .deb path but without the package manager integration. Use it if you want to install on a running system without building the .deb first.
 
 ## Verification
 
 After reboot:
 
 ```bash
+systemctl status wk2xxx-build.service
 dkms status
 lsmod | grep wk2xxx
 ls /dev/ttyWK*
@@ -110,24 +89,66 @@ sudo minicom -D /dev/ttyWK0 -b 115200
 
 Exit with `Ctrl+A`, then `X`.
 
+## Integration into custom Armbian build
+
+1. Build the .deb on any Debian/Ubuntu machine (or on the target SBC):
+
+   ```bash
+   ./build-deb.sh
+   ```
+
+2. Copy the resulting `.deb` to `userpatches/overlay/` on the Armbian Build host:
+
+   ```
+   userpatches/overlay/wk2xxx-dkms_1.0.0_all.deb
+   ```
+
+3. In `userpatches/customize-image.sh`, add:
+
+   ```bash
+   InstallWk2xxxDriver() {
+       apt-get install -y /tmp/overlay/wk2xxx-dkms_1.0.0_all.deb
+   }
+   ```
+
+   and call `InstallWk2xxxDriver` from `Main()`.
+
+4. Build the image. After first boot, the module will compile automatically via `wk2xxx-build.service`.
+
 ## How it works
 
-The package is resilient to custom Armbian builds where the running kernel version differs from the available headers:
+- `wk2xxx.c` — driver source with compatibility defines (`PORT_WK2XXX`, `UPIO_BUS`, `SERIAL_IO_BUS`) so it compiles against older kernel headers.
+- `scripts/prepare-headers.sh` — symlinks the best available headers to `/lib/modules/$(uname -r)/build` so DKMS can find them.
+- `scripts/post-build.sh` — patches the `vermagic` string in the compiled `.ko` to match the target kernel version if headers differ.
+- `wk2xxx-build.service` — oneshot systemd unit, runs on first boot: prepares headers, builds, installs, runs `depmod`, then loads the module.
 
-- `scripts/prepare-headers.sh` — symlinks the best available headers to `/lib/modules/$(uname -r)/build`, so DKMS can find them.
-- `scripts/post-build.sh` — after DKMS compiles the module, it patches the `vermagic` string in the binary to match the target kernel version. If lengths differ, the module is left untouched and a warning is printed.
-- `wk2xxx.c` — contains compatibility defines (`PORT_WK2XXX`, `UPIO_BUS`, `SERIAL_IO_BUS`) so it compiles against older kernel headers.
+## Uninstall
+
+```bash
+sudo apt remove --purge wk2xxx-dkms
+sudo reboot
+```
+
+This removes the DKMS entry, systemd service, module binary, and autoload config.
 
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | No `/dev/ttyWK*` | Module not loaded | `sudo modprobe wk2xxx`, check `dmesg` |
-| `dkms build` fails | Kernel headers unavailable | `apt install linux-headers-current-rockchip64` |
+| `wk2xxx-build.service` failed | Kernel headers unavailable | `apt install linux-headers-current-rockchip64` |
+| `dkms build` fails | Missing build tools | `apt install build-essential` |
 | `probe failed` on load | Overlay missing or `pca9555` not up | Apply overlays first, verify with `dmesg` |
 | CS line stays in Z-state | `spi1m1_cs0` missing from `pinctrl-0` | Fix the overlay |
 | No data on TX | Reset line not released | Check `reset-gpio` via `debugfs` |
-| `vermagic` still mismatched after install | DKMS skipped `post-build` | Check `/var/lib/dkms/wk2xxx/1.0.0/<kernel>/<arch>/log/make.log` |
+| `vermagic` mismatched | DKMS skipped `post-build` | Check `/var/lib/dkms/wk2xxx/1.0.0/<kernel>/<arch>/log/make.log` |
+
+Logs:
+
+```bash
+journalctl -u wk2xxx-build.service --no-pager
+cat /var/lib/dkms/wk2xxx/1.0.0/<kernel>/<arch>/log/make.log
+```
 
 ## Driver Source
 
@@ -136,11 +157,6 @@ The package is resilient to custom Armbian builds where the running kernel versi
 - LKML patch v4: <https://patchew.org/linux/20260908103129.58085-1-zjzhao@edatec.cn/>
 - Original community driver: <https://github.com/britus/wk2xxx>
 
-## Uninstall
+## License
 
-```bash
-sudo dkms remove -m wk2xxx -v 1.0.0 --all
-sudo rm -rf /usr/src/wk2xxx-1.0.0
-sudo rm -f /etc/modules-load.d/wk2xxx.conf
-sudo reboot
-```
+GPL-2.0+
