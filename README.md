@@ -1,96 +1,69 @@
 # WK2xxx SPI to 4x UART Driver (DKMS)
 
-Linux kernel driver for the **WK2124** (and compatible WK2132 / WK2168 / WK2202 / WK2204) SPI-to-UART bridge ICs from WKmic (Chengdu Weikai Microelectronics). The driver exposes four independent UART channels and is packaged as a DKMS module so it rebuilds automatically after kernel updates.
+Linux kernel driver for the **WK2124** (and compatible WK2132 / WK2168 / WK2202 / WK2204) SPI-to-UART bridge ICs from WKmic. Exposes four independent UART channels as `/dev/ttyWK0..3`. Packaged as a DKMS module, so it rebuilds automatically after kernel updates.
 
 ## Features
 
 - 4 independent UART channels (`/dev/ttyWK0..3`)
-- Full-duplex operation with 256-byte FIFO per channel
+- Full-duplex, 256-byte FIFO per channel
 - Hardware flow control (RTS/CTS)
 - RS-485 support (WK2124, WK2168, WK2204)
-- Interrupt-driven operation (no polling)
+- Interrupt-driven operation
 - DKMS integration for automatic rebuild on kernel upgrades
-- Device Tree overlay ready for RK3568‑based boards
 
-## Supported Platforms
+## Requirements
 
-- Armbian (tested on **RK3568**, e.g. Firefly AIO‑3568J)
-- Linux kernel **6.18+**
+- Armbian on RK3568 (tested on Firefly AIO-3568J)
+- Kernel 6.18+
+- Device Tree overlay for WK2124 already installed and enabled on the system
+- `pca9555` GPIO expander available (used for the reset line)
+- Build dependencies: `build-essential`, `dkms`, kernel headers
 
-## Hardware Requirements
-
-- WK2124 (or compatible) connected via SPI
-- External **11.0592 MHz** crystal for the reference clock
-- Reset line via GPIO expander (PCA9555) or direct GPIO
-- IRQ line on a GPIO
-
-See [`docs/pinout.md`](docs/pinout.md) for the detailed connection table and [`wk2124-sch.JPG`](wk2124-sch.JPG) for the schematic.
+> ⚠️ Warning: This package installs **only the DKMS driver**. Device Tree overlays and their dependencies (`pixelnas-i2c`, `pixelnas-exp`, `pixelnas-wk2xxx`) must already be present and enabled on the system before installation.
 
 ## Installation
-
-### Quick install
 
 ```bash
 git clone https://github.com/sdyspb/wk2xxx-spi-4x-uart-driver.git
 cd wk2xxx-spi-4x-uart-driver
-sudo ./scripts/install.sh
+sudo ./install.sh
 sudo reboot
 ```
 
-### Manual DKMS install
+The installer performs the following steps:
 
-```bash
-sudo apt install build-essential dkms linux-headers-$(uname -r)
-
-sudo mkdir -p /usr/src/wk2xxx-1.0.0
-sudo cp Makefile dkms.conf wk2xxx.c /usr/src/wk2xxx-1.0.0/
-cd /usr/src/wk2xxx-1.0.0
-
-sudo dkms add -m wk2xxx -v 1.0.0
-sudo dkms build -m wk2xxx -v 1.0.0
-sudo dkms install -m wk2xxx -v 1.0.0 --force
-
-# Device Tree overlay
-sudo cp overlays/pixelnas-wk2xxx.dts /boot/overlay-user/
-sudo armbian-add-overlay /boot/overlay-user/pixelnas-wk2xxx.dts
-sudo reboot
-```
-
-> ⚠️ **Warning:** The `wk2xxx.c` source file is **not yet present** in this repository.  
-> DKMS cannot build without it. Add the driver source before running the install script.
+1. Installs `build-essential` and `dkms`.
+2. Prepares kernel headers for the running kernel (`scripts/prepare-headers.sh`).
+3. Copies sources to `/usr/src/wk2xxx-1.0.0/`.
+4. Registers, builds, and installs the module via DKMS.
+5. Enables autoload through `/etc/modules-load.d/wk2xxx.conf`.
 
 ## Verification
 
 After reboot:
 
 ```bash
+dkms status
 lsmod | grep wk2xxx
 ls /dev/ttyWK*
-dmesg | grep -i wk2xxx
+dmesg | grep -iE "wk2xxx|ttyWK"
 ```
 
-Expected output:
+Expected:
 
 ```text
+wk2xxx/1.0.0, 6.18.54-current-rockchip64, aarch64: installed
 wk2xxx                 24576  0
 /dev/ttyWK0  /dev/ttyWK1  /dev/ttyWK2  /dev/ttyWK3
 wk2xxx spi1.0: WK2124 SPI to UART bridge, 4 ports
+spi1.0: ttyWK0 at *unknown* (irq = XX, base_baud = 691200) is a wk2xxx
 ```
 
 ## Testing
 
-### Quick test
+### Loopback
 
-```bash
-sudo ./scripts/test-minicom.sh /dev/ttyWK0 115200
-```
-
-> ⚠️ **Warning:** `scripts/test-minicom.sh` is not included yet. Create it or run the manual tests below.
-
-### Loopback test
-
-1. Short the **TX** and **RX** pins on the WK2124 channel connector.
-2. Run:
+Short **TX** and **RX** on the desired channel, then:
 
 ```bash
 sudo stty -F /dev/ttyWK0 115200 raw -echo
@@ -100,7 +73,7 @@ sleep 3
 xxd /tmp/loop.out
 ```
 
-Expected result: `41 42 43` (hex for `ABC`).
+Expected: `41 42 43` (hex for `ABC`).
 
 ### Minicom
 
@@ -114,9 +87,25 @@ Exit with `Ctrl+A`, then `X`.
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| No `/dev/ttyWK*` | Driver not loaded | `sudo modprobe wk2xxx` |
-| `probe failed` | Missing reference clock | Add a `fixed-clock` node to the overlay |
-| CS line stays in Z‑state | `spi1m1_cs0` missing from `pinctrl-0` | Add `&spi1m1_cs0` to `pinctrl-0` |
-| No data on TX | Reset line not released | Check `reset-gpio` state |
-| `vermagic` mismatch | Headers ≠ running kernel | Use DKMS (this package) |
+| No `/dev/ttyWK*` | Module not loaded | `sudo modprobe wk2xxx` |
+| `dkms build` fails | Kernel headers missing | `sudo apt install linux-headers-$(uname -r)` |
+| `probe failed` on load | Overlay not applied or `pca9555` unavailable | Check `dmesg`, verify overlays |
+| CS line stays in Z-state | `spi1m1_cs0` missing from `pinctrl-0` | Fix the overlay |
+| No data on TX | Reset line not released | Check `reset-gpio` state via `debugfs` |
+| `vermagic` mismatch | Headers version differs from kernel | `post-build.sh` patches it automatically |
 
+## Driver Source
+
+`wk2xxx.c` is derived from the EDATEC patch series submitted to the Linux kernel mailing list:
+
+- LKML patch v4: <https://patchew.org/linux/20260908103129.58085-1-zjzhao@edatec.cn/>
+- Original community driver: <https://github.com/britus/wk2xxx>
+
+## Uninstall
+
+```bash
+sudo dkms remove -m wk2xxx -v 1.0.0 --all
+sudo rm -rf /usr/src/wk2xxx-1.0.0
+sudo rm -f /etc/modules-load.d/wk2xxx.conf
+sudo reboot
+```
