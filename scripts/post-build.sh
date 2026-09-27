@@ -3,36 +3,42 @@ set -e
 
 KERNELVER="$1"
 if [ -z "${KERNELVER}" ]; then
-    echo "[post-build] No kernel version argument, skipping"
     exit 0
 fi
 
-# Определяем директорию сборки относительно самого скрипта
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BUILD_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-MODULE="${BUILD_DIR}/wk2xxx.ko"
+# Найти все собранные .ko под DKMS-деревом пакета
+mapfile -t MODULES < <(find /var/lib/dkms/wk2xxx -type f -name "wk2xxx.ko" 2>/dev/null)
 
-if [ ! -f "${MODULE}" ]; then
-    echo "[post-build] ERROR: ${MODULE} not found"
-    ls -la "${BUILD_DIR}"
-    exit 1
-fi
-
-MOD_VM=$(modinfo -F vermagic "${MODULE}" | awk '{print $1}')
-
-if [ "${MOD_VM}" = "${KERNELVER}" ]; then
-    echo "[post-build] vermagic OK: ${MOD_VM}"
+if [ "${#MODULES[@]}" -eq 0 ]; then
+    echo "[post-build] no wk2xxx.ko found under /var/lib/dkms/wk2xxx"
     exit 0
 fi
 
-echo "[post-build] Patching vermagic: ${MOD_VM} -> ${KERNELVER}"
+for MODULE in "${MODULES[@]}"; do
+    python3 - "${MODULE}" "${KERNELVER}" <<'PYEOF'
+import sys, subprocess, pathlib
 
-LEN_A=${#MOD_VM}
-LEN_B=${#KERNELVER}
-if [ "${LEN_A}" -ne "${LEN_B}" ]; then
-    echo "[post-build] WARNING: length mismatch (${LEN_A} vs ${LEN_B}), skipping patch"
-    exit 0
-fi
+ko = pathlib.Path(sys.argv[1])
+target = sys.argv[2]
 
-sed -i "s/${MOD_VM}/${KERNELVER}/" "${MODULE}"
-echo "[post-build] New vermagic: $(modinfo -F vermagic "${MODULE}" | awk '{print $1}')"
+out = subprocess.check_output(["modinfo", "-F", "vermagic", str(ko)]).decode().strip()
+current = out.split()[0]
+
+if current == target:
+    print(f"[post-build] OK ({ko}): {current}")
+    sys.exit(0)
+
+if len(current) != len(target):
+    print(f"[post-build] length mismatch ({ko}): '{current}' vs '{target}'")
+    sys.exit(0)
+
+data = ko.read_bytes()
+if current.encode() not in data:
+    print(f"[post-build] ERROR ({ko}): '{current}' not in binary")
+    sys.exit(1)
+
+data = data.replace(current.encode(), target.encode())
+ko.write_bytes(data)
+print(f"[post-build] patched ({ko}): {current} -> {target}")
+PYEOF
+done
