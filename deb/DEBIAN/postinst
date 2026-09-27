@@ -1,0 +1,17 @@
+#!/bin/bash
+set -e
+
+if command -v dkms >/dev/null 2>&1; then
+    dkms add -m wk2xxx -v 1.0.0 || true
+fi
+
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload || true
+    systemctl enable wk2xxx-build.service || true
+else
+    mkdir -p /etc/systemd/system/sysinit.target.wants
+    ln -sf /lib/systemd/system/wk2xxx-build.service \
+           /etc/systemd/system/sysinit.target.wants/wk2xxx-build.service
+fi
+
+exit 0
