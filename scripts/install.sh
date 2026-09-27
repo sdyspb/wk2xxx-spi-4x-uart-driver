@@ -11,12 +11,12 @@ KERNELVER="$(uname -r)"
 apt update
 apt install -y build-essential dkms
 
-"${REPO_DIR}/scripts/prepare-headers.sh" "${KERNELVER}"
+"${SCRIPT_DIR}/prepare-headers.sh" "${KERNELVER}"
 
 rm -rf "${SRC_DIR}"
 mkdir -p "${SRC_DIR}"
 cp "${REPO_DIR}/Makefile" "${REPO_DIR}/dkms.conf" "${REPO_DIR}/wk2xxx.c" "${SRC_DIR}/"
-cp -r "${REPO_DIR}/scripts" "${SRC_DIR}/scripts"
+cp -r "${SCRIPT_DIR}" "${SRC_DIR}/scripts"
 chmod +x "${SRC_DIR}/scripts/"*.sh
 
 dkms remove -m "${PKG_NAME}" -v "${PKG_VER}" --all 2>/dev/null || true
