@@ -84,20 +84,6 @@ spi1.0: ttyWK0 at *unknown* (irq = 104, base_baud = 691200) is a wk2xxx
 
 ## Testing
 
-### Loopback
-
-Short **TX** and **RX** on the desired channel, then:
-
-```bash
-sudo stty -F /dev/ttyWK0 115200 raw -echo
-( sudo timeout 3 cat /dev/ttyWK0 > /tmp/loop.out & ) ; sleep 0.3
-sudo sh -c "printf 'ABC' > /dev/ttyWK0"
-sleep 3
-xxd /tmp/loop.out
-```
-
-Expected: `41 42 43` (hex for `ABC`).
-
 ### Minicom
 
 ```bash
